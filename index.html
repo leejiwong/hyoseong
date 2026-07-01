@@ -1107,8 +1107,8 @@ function persist(){
   // 1) 브라우저 로컬 저장 (오프라인·즉시)
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }
   catch(e){ /* 용량초과 등은 무시 */ }
-  // 2) 파이어베이스 동기화 (온라인·여러 기기 공유). 원격 반영 중에는 재전송 안 함
-  if(_fbReady && _fbDoc && !_fbApplying){
+  // 2) 파이어베이스 동기화 — ref가 준비되면 항상 전송(원격 반영 중 재전송만 차단)
+  if(_fbDoc && !_fbApplying){
     try{ _fbDoc.set({ data: JSON.stringify(DB), updatedAt: Date.now() }); }
     catch(e){ /* 네트워크 오류는 무시(로컬은 이미 저장됨) */ }
   }
@@ -1353,8 +1353,7 @@ seedBankFinance();
 allocatePayments();
 computeBalances();
 renderAll();
-// 최초 진입(저장 데이터 없을 때)에도 기본 상태를 한 번 저장해 둠
-if(!_hadSaved) persist();
+// 파이어베이스 연결 후 원격 데이터가 정답이 됩니다. 여기서 로컬을 올리지 않아 기기 간 덮어쓰기를 막습니다.
 
 // ============ 파이어베이스 동기화 (Realtime Database — 여러 기기 공유 + 새로고침 유지) ============
 // 본인 프로젝트 설정값. 웹 apiKey는 공개되어도 되는 값이며, 실제 보호는 보안 규칙으로 합니다.
@@ -1373,13 +1372,16 @@ function initFirebase(){
     firebase.initializeApp(firebaseConfig);
     const db=firebase.database();
     _fbDoc=db.ref('gangnam/shared');   // 공동 데이터 한 곳에 전체 저장
+    let firstSnapshot=true;
     // 실시간 구독: 다른 기기에서 바뀌면 이 화면도 자동 갱신
     _fbDoc.on('value', snap=>{
       const remote=snap.val();
       if(!remote || !remote.data){
-        // 원격에 아직 없으면 현재(로컬) 데이터를 최초 1회 업로드
-        _fbReady=true; persist(); setFbStatus('연결됨 · 이 기기 데이터로 시작'); return;
+        // 원격이 비었을 때만 현재(이 기기) 데이터를 최초 업로드
+        _fbReady=true; firstSnapshot=false; persist();
+        setFbStatus('연결됨 · 이 기기 데이터로 시작'); return;
       }
+      // 원격에 데이터가 있으면 항상 원격을 정답으로 받아 화면 갱신
       try{
         _fbApplying=true;                 // 원격 반영 중엔 되쏘지 않음(무한루프 방지)
         const o=JSON.parse(remote.data);
@@ -1389,7 +1391,7 @@ function initFirebase(){
         seedFromLedger(); seedBankFinance(); allocatePayments(); computeBalances(); renderAll();
       }catch(e){}
       finally{ _fbApplying=false; }
-      _fbReady=true;
+      _fbReady=true; firstSnapshot=false;
       setFbStatus('연결됨 · 여러 기기 실시간 공유');
     }, err=>{
       _fbReady=false;
