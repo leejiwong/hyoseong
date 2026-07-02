@@ -1268,7 +1268,10 @@ function renderBank(){
   document.getElementById('tab-bank').innerHTML=html;
   bindExpenseNotes();
 }
-// 공개용 입출금 현황: 관리자 탭과 같은 데이터를 쓰되 개인정보(거래명·이름·세부내역)는 감춤
+// 공개용 입출금 현황: 관리자 탭과 같은 데이터를 쓰되 개인정보(거래명·이름)는 감춤
+let _pubIncOpen={}, _pubExpOpen={};
+function togglePubInc(mk){ _pubIncOpen[mk]=!_pubIncOpen[mk]; renderBankPub(); }
+function togglePubExp(mk){ _pubExpOpen[mk]=!_pubExpOpen[mk]; renderBankPub(); }
 function renderBankPub(){
   const months = Object.keys(BANK_MONTHLY).sort();
   let running=null;
@@ -1286,7 +1289,7 @@ function renderBankPub(){
     running=bal;
     return {mk, prev, income:m.income, expense:m.expense, bal};
   });
-  const totIn=rows.reduce((a,r)=>a+r.income,0), totOut=rows.reduce((a,r)=>a+r.expense,0);
+  const totOut=rows.reduce((a,r)=>a+r.expense,0);
   const curBal = rows.length?rows[rows.length-1].bal:(DB.startBalance||0);
 
   // 지출 분류별 합계(개인 이름 없이 '분류'만 집계) — 투명성 제공
@@ -1305,8 +1308,6 @@ function renderBankPub(){
     <h2>입출금 현황 <span class="note">(사택 공동 회계)</span></h2>
     <div class="infoblock">사택 관리비 통장의 월별 수입·지출과 잔액입니다. 개인 입금 내역(이름 등)은 표시되지 않으며, 자세한 개별 확인이 필요하면 총무에게 문의하세요.</div>
     <div class="stat" style="margin-top:12px">
-      <div class="statbox"><div class="t">누적 수입</div><div class="n">${won(totIn)}</div></div>
-      <div class="statbox warn"><div class="t">누적 지출</div><div class="n">${won(totOut)}</div></div>
       <div class="statbox"><div class="t">현재 잔액</div><div class="n">${won(curBal)}</div></div>
     </div>
   </div>
@@ -1315,26 +1316,27 @@ function renderBankPub(){
     <h2>월별 수입·지출 현황</h2>
     <table class="mono">
       <tr><th>월</th><th>전월잔액</th><th>수입</th><th>지출</th><th>잔액</th></tr>
-      ${rows.map(r=>`
+      ${rows.map(r=>{
+        const detailable = r.mk > '2025-12';  // 2026-01부터 세부내역 펼침
+        const incCell = detailable
+          ? `<td style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="togglePubInc('${r.mk}')" title="클릭하면 수입 세부내역">${won(r.income)} ▾</td>`
+          : `<td style="color:var(--accent)">${won(r.income)}</td>`;
+        const expCell = detailable
+          ? `<td style="color:var(--warn);cursor:pointer;text-decoration:underline" onclick="togglePubExp('${r.mk}')" title="클릭하면 지출 세부내역">${won(r.expense)} ▾</td>`
+          : `<td style="color:var(--warn)">${won(r.expense)}</td>`;
+        return `
         <tr>
           <td><b>${r.mk}</b></td>
           <td>${won(r.prev)}</td>
-          <td style="color:var(--accent)">${won(r.income)}</td>
-          <td style="color:var(--warn)">${won(r.expense)}</td>
+          ${incCell}
+          ${expCell}
           <td><b>${won(r.bal)}</b></td>
-        </tr>`).join('')}
+        </tr>
+        ${(detailable && _pubIncOpen[r.mk])?`<tr><td colspan="5" style="padding:0">${incomeDetailHTML(r.mk)}</td></tr>`:''}
+        ${(detailable && _pubExpOpen[r.mk])?`<tr><td colspan="5" style="padding:0">${expenseDetailHTML(r.mk)}</td></tr>`:''}
+      `;}).join('')}
     </table>
-    <p class="note">수입은 관리비·보증금 등 입금 합계, 지출은 전기·가스·세금·수리 등 공동경비 합계입니다. 잔액은 통장 실제 잔액과 같습니다.</p>
-  </div>
-
-  <div class="card">
-    <h2>지출 분류별 합계 <span class="note">(2024-09 ~ 현재)</span></h2>
-    <table class="mono">
-      <tr><th>분류</th><th>합계</th></tr>
-      ${catRows.map(c=>`<tr><td>${esc(c[0])}</td><td style="color:var(--warn)">${won(c[1])}</td></tr>`).join('')}
-      <tr><td><b>합계</b></td><td><b>${won(totOut)}</b></td></tr>
-    </table>
-    <p class="note">지출이 어디에 쓰였는지 분류별로 정리한 표입니다. 개별 거래명·이름은 포함하지 않습니다.</p>
+    <p class="note">2026년 1월부터 수입·지출 금액을 클릭하면 세부 내역이 펼쳐집니다. 개인 이름은 성만 표시됩니다(예: 홍**). 수입은 관리비·보증금 등 입금, 지출은 전기·가스·세금·수리 등 공동경비입니다.</p>
   </div>`;
 
   document.getElementById('tab-bankpub').innerHTML=html;
